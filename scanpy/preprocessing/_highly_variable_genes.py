@@ -6,6 +6,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp_sparse
+from scipy.stats import entropy
 from anndata import AnnData
 
 from .. import logging as logg
@@ -301,6 +302,80 @@ def _highly_variable_genes_single_batch(
     return df
 
 
+def _highly_entropic_genes(
+    adata: AnnData,
+    layer: str | None = None,
+    min_entropy: float | None = 1.,
+    max_entropy: float | None = 3.,
+    n_top_genes: int | None = None,
+    base: int | None = 2,
+    subset: bool = False,
+    inplace: bool = True,
+    batch_key: str | None = None,
+    check_values: bool = True,
+) -> pd.DataFrame | None:
+    """\
+    Annotate highly entropic genes
+
+    Expects count data
+
+    Parameters
+    ----------
+    adata
+        The annotated data matrix of shape `n_obs` × `n_vars`. Rows correspond
+        to cells and columns to genes.
+    layer
+        If provided, use `adata.layers[layer]` for expression values instead of `adata.X`.
+    n_top_genes
+        Number of highly-entropic genes to keep.
+    subset
+        Inplace subset to highly-entropic genes if `True` otherwise merely indicate
+        highly entropic genes.
+    inplace
+        Whether to place calculated metrics in `.var` or return them.
+    check_values
+        Check if counts in selected layer are integers. A Warning is returned if set to True.
+
+    Returns
+    -------
+    Returns a :class:`pandas.DataFrame` with calculated metrics if `inplace=True`, else returns an `AnnData` object where it sets the following field:
+
+    `adata.var['highly_entropic']` : :class:`pandas.Series` (dtype `bool`)
+        boolean indicator of highly-entropic genes
+    `adata.var['entropy']` : :class:`pandas.Series` (dtype `float`)
+        Entropy of each gene, mean entropy if multiple batches. 
+    `adata.var['highly_variable_rank']` : :class:`pandas.Series` (dtype `float`)
+        For `flavor='seurat_v3'`, rank of the gene according to normalized
+        variance, median rank in the case of multiple batches
+    `adata.var['highly_entropic_nbatches']` : :class:`pandas.Series` (dtype `int`)
+        If batch_key is given, this denotes in how many batches genes are detected as HEG
+    `adata.var['highly_entropic_intersection']` : :class:`pandas.Series` (dtype `bool`)
+        If batch_key is given, this denotes the genes that are highly entropic in all batches
+
+    Notes
+    -----
+
+    """
+
+    df = pd.DataFrame(index=adata.var_names)
+    X = adata.layers[layer].T if layer is not None else adata.X.T
+    
+    if check_values and not check_nonnegative_integers(X):
+        warnings.warn(
+            "`flavor='entropy'` expects raw count data, but non-integers were found.",
+            UserWarning,
+        )
+    X = np.array(X.todense())
+    gene_to_row = list(zip(df.index.tolist(), X))
+    entropies = []
+    for _, exp in gene_to_row:
+        counts = np.unique(exp, return_counts = True)
+        entropies.append(entropy(counts[1][1:],base=base))
+    adata.var["entropy"] = entropies
+    if inplace and subset:
+        adata = adata[:,adata.var["entropy"] > min_entropy]
+    
+
 def highly_variable_genes(
     adata: AnnData,
     layer: str | None = None,
@@ -309,6 +384,8 @@ def highly_variable_genes(
     max_disp: float | None = np.inf,
     min_mean: float | None = 0.0125,
     max_mean: float | None = 3,
+    min_entropy: float | None = 1.,
+    max_entropy: float | None = 1.,
     span: float | None = 0.3,
     n_bins: int = 20,
     flavor: Literal["seurat", "cell_ranger", "seurat_v3"] = "seurat",
@@ -443,6 +520,17 @@ def highly_variable_genes(
             batch_key=batch_key,
             check_values=check_values,
             span=span,
+            subset=subset,
+            inplace=inplace,
+        )
+    elif flavor == "entropy":
+        return _highly_entropic_genes(
+            adata,
+            layer=layer,
+            n_top_genes=n_top_genes,
+            min_entropy=min_entropy,
+            max_entropy=max_entropy,
+            check_values=check_values,
             subset=subset,
             inplace=inplace,
         )
