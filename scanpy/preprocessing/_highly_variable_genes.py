@@ -302,7 +302,7 @@ def _highly_variable_genes_single_batch(
     return df
 
 
-def _highly_entropic_genes(
+def _highly_variable_genes_entropy(
     adata: AnnData,
     layer: str | None = None,
     min_entropy: float | None = 1.,
@@ -354,9 +354,7 @@ def _highly_entropic_genes(
 
     Notes
     -----
-
     """
-
     df = pd.DataFrame(index=adata.var_names)
     X = adata.layers[layer].T if layer is not None else adata.X.T
     
@@ -524,7 +522,7 @@ def highly_variable_genes(
             inplace=inplace,
         )
     elif flavor == "entropy":
-        return _highly_entropic_genes(
+        return _highly_variable_genes_entropy(
             adata,
             layer=layer,
             n_top_genes=n_top_genes,
