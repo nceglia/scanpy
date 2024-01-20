@@ -371,7 +371,8 @@ def _highly_variable_genes_entropy(
         entropies.append(entropy(counts[1][1:],base=base))
     adata.var["entropy"] = entropies
     if inplace and subset:
-        adata = adata[:,adata.var["entropy"] > min_entropy]
+        adata = adata[:,adata.var["entropy"] >= min_entropy]
+        adata = adata[:,adata.var["entropy"] <= max_entropy]
     
 
 def highly_variable_genes(
