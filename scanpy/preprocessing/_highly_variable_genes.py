@@ -302,6 +302,10 @@ def _highly_variable_genes_single_batch(
     return df
 
 
+def calculate_entropy(expression_values, base=2):
+    counts = np.unique(expression_values, return_counts = True)
+    return entropy(counts[1][1:], base=base)
+
 def _highly_variable_genes_entropy(
     adata: AnnData,
     layer: str | None = None,
@@ -312,6 +316,7 @@ def _highly_variable_genes_entropy(
     subset: bool = False,
     inplace: bool = True,
     batch_key: str | None = None,
+    batch_agg: str | None = "mean",
     check_values: bool = True,
 ) -> pd.DataFrame | None:
     """\
@@ -364,16 +369,28 @@ def _highly_variable_genes_entropy(
             UserWarning,
         )
     X = np.array(X.todense())
-    gene_to_row = list(zip(df.index.tolist(), X))
-    entropies = []
-    for _, exp in gene_to_row:
-        counts = np.unique(exp, return_counts = True)
-        entropies.append(entropy(counts[1][1:],base=base))
-    adata.var["entropy"] = entropies
-    if inplace and subset:
-        adata = adata[:,adata.var["entropy"] >= min_entropy]
-        adata = adata[:,adata.var["entropy"] <= max_entropy]
+
+
+    gene_to_expression_values = list(zip(df.index.tolist(), X))
+    entropies = dict()
+    if batch_key != None:
+        # batches = adata.obs[batch_key].cat.categories
+        # df = []
+        # gene_list = adata.var_names
+        # for batch in batches:
+        #     adata_subset = adata[adata.obs[batch_key] == batch]
+        pass
+    else:
+        for gene, exp in gene_to_expression_values:
+            counts = np.unique(exp, return_counts = True)
+            entropies[gene] = entropy(counts[1][1:],base=base)
+
+    adata.var["entropy"] = map(lambda x : entropies[x], adata.var_names)
     
+    # if inplace and subset:
+    #     adata = adata[:,adata.var["entropy"] >= min_entropy]
+    #     adata = adata[:,adata.var["entropy"] <= max_entropy]
+
 
 def highly_variable_genes(
     adata: AnnData,
@@ -494,7 +511,7 @@ def highly_variable_genes(
         If batch_key is given, this denotes the genes that are highly variable in all batches
 
     Notes
-    -----
+        -----
     This function replaces :func:`~scanpy.pp.filter_genes_dispersion`.
     """
 
